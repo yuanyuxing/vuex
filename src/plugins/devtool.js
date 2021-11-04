@@ -6,6 +6,7 @@ const target = typeof window !== 'undefined'
 const devtoolHook = target.__VUE_DEVTOOLS_GLOBAL_HOOK__
 
 export default function devtoolPlugin (store) {
+  // 要存在window。__VUE_DEVTOOLS_GLOBAL_HOOK__ 或 global。__VUE_DEVTOOLS_GLOBAL_HOOK__
   if (!devtoolHook) return
 
   store._devtoolHook = devtoolHook

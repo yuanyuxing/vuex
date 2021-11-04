@@ -7,6 +7,11 @@ export default class ModuleCollection {
     this.register([], rawRootModule, false)
   }
 
+  /**
+   * path说明：[k1,k2,k3]
+   * @param {Array} path 
+   * @returns root[k1][k2].getChild(k3)
+   */
   get (path) {
     return path.reduce((module, key) => {
       return module.getChild(key)
@@ -34,6 +39,7 @@ export default class ModuleCollection {
     if (path.length === 0) {
       this.root = newModule
     } else {
+      // 获取最后路径去除最后一个元素的数组
       const parent = this.get(path.slice(0, -1))
       parent.addChild(path[path.length - 1], newModule)
     }

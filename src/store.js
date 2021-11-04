@@ -14,30 +14,34 @@ export class Store {
       install(window.Vue)
     }
 
-    if (__DEV__) {
-      assert(Vue, `must call Vue.use(Vuex) before creating a store instance.`)
-      assert(typeof Promise !== 'undefined', `vuex requires a Promise polyfill in this browser.`)
-      assert(this instanceof Store, `store must be called with the new operator.`)
-    }
-
     const {
       plugins = [],
       strict = false
     } = options
 
     // store internal state
+     /* 用来判断严格模式下是否是用mutation修改state的 */
     this._committing = false
-    this._actions = Object.create(null)
+    /* 存放action */
+    this._actions = Object.create(null)  // {}
+    /* 存放action订阅者 */
     this._actionSubscribers = []
-    this._mutations = Object.create(null)
-    this._wrappedGetters = Object.create(null)
+    /* 存放mutation */
+    this._mutations = Object.create(null) // {}
+    /* 存放getter */
+    this._wrappedGetters = Object.create(null) // {}
+    /* module收集器 */
     this._modules = new ModuleCollection(options)
-    this._modulesNamespaceMap = Object.create(null)
+    /* 根据namespace存放module */
+    this._modulesNamespaceMap = Object.create(null) // {}
+    /* 存放mutation订阅者 */
     this._subscribers = []
+    /* 用以实现Watch的Vue实例 */
     this._watcherVM = new Vue()
-    this._makeLocalGettersCache = Object.create(null)
+    this._makeLocalGettersCache = Object.create(null) //{}
 
     // bind commit and dispatch to self
+    // 无法在外部改变this实例，this只有指向Store
     const store = this
     const { dispatch, commit } = this
     this.dispatch = function boundDispatch (type, payload) {
@@ -48,22 +52,26 @@ export class Store {
     }
 
     // strict mode
+    /*严格模式(使 Vuex store 进入严格模式，在严格模式下，任何 mutation 处理函数以外修改 Vuex state 都会抛出错误)*/
     this.strict = strict
 
     const state = this._modules.root.state
 
-    // init root module.
-    // this also recursively registers all sub-modules
-    // and collects all module getters inside this._wrappedGetters
+    // init root module.  --init根模块
+    // this also recursively registers all sub-modules  --递归地注册所有子模块
+    // and collects all module getters inside this._wrappedGetters --并在此内部收集所有模块到wrappedGetters 
+    /*初始化根module，这也同时递归注册了所有子module，收集所有module的getter到_wrappedGetters中去，this._modules.root代表根module才独有保存的Module对象*/
     installModule(this, state, [], this._modules.root)
 
     // initialize the store vm, which is responsible for the reactivity
     // (also registers _wrappedGetters as computed properties)
+    /* 通过vm重设store，新建Vue对象使用Vue内部的响应式实现注册state以及computed */
     resetStoreVM(this, state)
 
-    // apply plugins
+    // apply plugins  应用插件
     plugins.forEach(plugin => plugin(this))
 
+    // 判断是否有devtools工具
     const useDevtools = options.devtools !== undefined ? options.devtools : Vue.config.devtools
     if (useDevtools) {
       devtoolPlugin(this)
@@ -74,12 +82,15 @@ export class Store {
     return this._vm._data.$$state
   }
 
+  // 无法设置state
   set state (v) {
     if (__DEV__) {
       assert(false, `use store.replaceState() to explicit replace store state.`)
     }
   }
 
+  // store.commit 
+  //在commit结束以后则会调用这些_subscribers中的订阅者，这个订阅者模式提供给外部一个监视state变化的可能。state通过mutation改变时，可以有效补获这些变化。
   commit (_type, _payload, _options) {
     // check object-style commit
     const {
@@ -96,12 +107,14 @@ export class Store {
       }
       return
     }
+    /* 执行mutation中的所有方法 */
     this._withCommit(() => {
       entry.forEach(function commitIterator (handler) {
         handler(payload)
       })
     })
 
+    /* 通知所有订阅者 */
     this._subscribers
       .slice() // shallow copy to prevent iterator invalidation if subscriber synchronously calls unsubscribe
       .forEach(sub => sub(mutation, this.state))
@@ -117,6 +130,7 @@ export class Store {
     }
   }
 
+  // store.dispatch 
   dispatch (_type, _payload) {
     // check object-style dispatch
     const {
@@ -145,6 +159,7 @@ export class Store {
       }
     }
 
+    /* 是数组则包装Promise形成一个新的Promise，只有一个则直接返回第0个 */
     const result = entry.length > 1
       ? Promise.all(entry.map(handler => handler(payload)))
       : entry[0](payload)
@@ -194,12 +209,14 @@ export class Store {
     return this._watcherVM.$watch(() => getter(this.state, this.getters), cb, options)
   }
 
+  // 重新设置state
   replaceState (state) {
     this._withCommit(() => {
       this._vm._data.$$state = state
     })
   }
 
+  /* 注册一个动态module，当业务进行异步加载的时候，可以通过该接口进行注册动态module */
   registerModule (path, rawModule, options = {}) {
     if (typeof path === 'string') path = [path]
 
@@ -214,6 +231,7 @@ export class Store {
     resetStoreVM(this, this.state)
   }
 
+   /* 注销一个动态module */
   unregisterModule (path) {
     if (typeof path === 'string') path = [path]
 
@@ -223,12 +241,15 @@ export class Store {
 
     this._modules.unregister(path)
     this._withCommit(() => {
+      /* 获取父级的state */
       const parentState = getNestedState(this.state, path.slice(0, -1))
+      /* 从父级中删除 */
       Vue.delete(parentState, path[path.length - 1])
     })
     resetStore(this)
   }
 
+  // 判断是否有这个path的module
   hasModule (path) {
     if (typeof path === 'string') path = [path]
 
@@ -236,6 +257,7 @@ export class Store {
       assert(Array.isArray(path), `module path must be a string or an Array.`)
     }
 
+    // 判断module是否有注册
     return this._modules.isRegistered(path)
   }
 
@@ -244,6 +266,10 @@ export class Store {
     resetStore(this, true)
   }
 
+  /* 
+  * 调用withCommit修改state的值时会将store的committing值置为true，内部会有断言检查该值，
+  * 在严格模式下只允许使用mutation来修改store中的值，而不允许直接修改store的数值 
+  */
   _withCommit (fn) {
     const committing = this._committing
     this._committing = true
@@ -252,6 +278,7 @@ export class Store {
   }
 }
 
+/* 注册一个订阅函数，返回取消订阅的函数 */
 function genericSubscribe (fn, subs, options) {
   if (subs.indexOf(fn) < 0) {
     options && options.prepend
@@ -266,6 +293,7 @@ function genericSubscribe (fn, subs, options) {
   }
 }
 
+/* 重制store */
 function resetStore (store, hot) {
   store._actions = Object.create(null)
   store._mutations = Object.create(null)
@@ -278,6 +306,8 @@ function resetStore (store, hot) {
   resetStoreVM(store, state, hot)
 }
 
+/* 通过vm重设store，新建Vue对象使用Vue内部的响应式实现注册state以及computed */
+// 为vue响应式更新使用
 function resetStoreVM (store, state, hot) {
   const oldVm = store._vm
 
@@ -302,6 +332,7 @@ function resetStoreVM (store, state, hot) {
   // suppress warnings just in case the user has added
   // some funky global mixins
   const silent = Vue.config.silent
+  /* Vue.config.silent暂时设置为true的目的是在new一个Vue实例的过程中不会报出一切警告 */
   Vue.config.silent = true
   store._vm = new Vue({
     data: {
@@ -312,11 +343,13 @@ function resetStoreVM (store, state, hot) {
   Vue.config.silent = silent
 
   // enable strict mode for new vm
+  /**Vuex的Store构造类的option有一个strict的参数，可以控制Vuex执行严格模式，严格模式下，所有修改state的操作必须通过mutation实现，否则会抛出错误 */
   if (store.strict) {
     enableStrictMode(store)
   }
 
   if (oldVm) {
+    /* 解除旧vm的state的引用，以及销毁旧的Vue对象 */
     if (hot) {
       // dispatch changes in all subscribed watchers
       // to force getter re-evaluation for hot reloading.
@@ -329,11 +362,11 @@ function resetStoreVM (store, state, hot) {
 }
 
 function installModule (store, rootState, path, module, hot) {
-  const isRoot = !path.length
-  const namespace = store._modules.getNamespace(path)
+  const isRoot = !path.length  // 判断是不是root modelue
+  const namespace = store._modules.getNamespace(path) // 根路径为 ''， 'r2' 'r2/r3'
 
-  // register in namespace map
-  if (module.namespaced) {
+  // register in namespace map  => 根据路径映射module
+  if (module.namespaced) { // namespaced为true才收集
     if (store._modulesNamespaceMap[namespace] && __DEV__) {
       console.error(`[vuex] duplicate namespace ${namespace} for the namespaced module ${path.join('/')}`)
     }
@@ -341,6 +374,7 @@ function installModule (store, rootState, path, module, hot) {
   }
 
   // set state
+  // 设置子模块的 state 设置到父模块的 state 中去，这也是为什么我们可以通过这种方式来获取子模块的 state 
   if (!isRoot && !hot) {
     const parentState = getNestedState(rootState, path.slice(0, -1))
     const moduleName = path[path.length - 1]
@@ -352,10 +386,12 @@ function installModule (store, rootState, path, module, hot) {
           )
         }
       }
+      // 为各个子模块state设置响应
       Vue.set(parentState, moduleName, module.state)
     })
   }
 
+  // 获取当前module的上下文，如果没有设置namespace，那么上下文就只有root
   const local = module.context = makeLocalContext(store, namespace, path)
 
   module.forEachMutation((mutation, key) => {
@@ -468,6 +504,13 @@ function registerMutation (store, type, handler, local) {
   })
 }
 
+/**
+ * 注册 action
+ * @param {*} store 
+ * @param {*} type 
+ * @param {*} handler 
+ * @param {*} local 
+ */
 function registerAction (store, type, handler, local) {
   const entry = store._actions[type] || (store._actions[type] = [])
   entry.push(function wrappedActionHandler (payload) {
@@ -493,6 +536,14 @@ function registerAction (store, type, handler, local) {
   })
 }
 
+/**
+ * 注册 getter
+ * @param {*} store 
+ * @param {*} type 
+ * @param {*} rawGetter 
+ * @param {*} local 
+ * @returns 
+ */
 function registerGetter (store, type, rawGetter, local) {
   if (store._wrappedGetters[type]) {
     if (__DEV__) {
@@ -510,6 +561,10 @@ function registerGetter (store, type, rawGetter, local) {
   }
 }
 
+/**
+ * 在严格模式下，Vuex会利用vm的$watch方法来观察$$state，也就是Store的state，在它被修改的时候进入回调。
+ * 回调中只有一句话，用assert断言来检测store._committing，当store._committing为false的时候会触发断言，抛出异常
+ */
 function enableStrictMode (store) {
   store._vm.$watch(function () { return this._data.$$state }, () => {
     if (__DEV__) {
@@ -518,6 +573,13 @@ function enableStrictMode (store) {
   }, { deep: true, sync: true })
 }
 
+/**
+ * 获取嵌套的state
+ * for example： 数组['k1','k2'] => state[k1][k2] 
+ * @param {*} state 
+ * @param {*} path 
+ * @returns 
+ */
 function getNestedState (state, path) {
   return path.reduce((state, key) => state[key], state)
 }
@@ -536,6 +598,11 @@ function unifyObjectStyle (type, payload, options) {
   return { type, payload, options }
 }
 
+/**
+ * vue 插件使用  Vue.use(Vuex)后调用
+ * @param {} _Vue 
+ * @returns 
+ */
 export function install (_Vue) {
   if (Vue && _Vue === Vue) {
     if (__DEV__) {
