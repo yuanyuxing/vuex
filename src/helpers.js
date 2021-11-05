@@ -13,16 +13,31 @@ export const mapState = normalizeNamespace((namespace, states) => {
   }
   normalizeMap(states).forEach(({ key, val }) => {
     res[key] = function mappedState () {
+      // 先初始化root的state和getters
       let state = this.$store.state
       let getters = this.$store.getters
+      // 有namespace，根据namespace查找对应的module
       if (namespace) {
         const module = getModuleByNamespace(this.$store, 'mapState', namespace)
         if (!module) {
           return
         }
+        // 查找对应module的state和getters
         state = module.context.state
         getters = module.context.getters
       }
+
+      /**
+       * 1、function的情况
+       * ...mapState({
+       *       userName: (state,getters) => state.user.name,
+       *       userAge: (state,getters) => state.user.age
+       *    })
+       * 
+       * 2、string的情况 或 重命名的情况
+       * ...mapState(['account', 'password', 'age'])
+       * ...mapState([add :'account', pass: 'password'])
+       */
       return typeof val === 'function'
         ? val.call(this, state, getters)
         : state[val]
@@ -47,14 +62,32 @@ export const mapMutations = normalizeNamespace((namespace, mutations) => {
   normalizeMap(mutations).forEach(({ key, val }) => {
     res[key] = function mappedMutation (...args) {
       // Get the commit method from store
+      // 先初始化root的commit
       let commit = this.$store.commit
+      // 有namespace，根据namespace查找对应的module
       if (namespace) {
         const module = getModuleByNamespace(this.$store, 'mapMutations', namespace)
         if (!module) {
           return
         }
+        // 查找对应module的commit
         commit = module.context.commit
       }
+      /**
+       * 1、function的情况
+       * ...mapMutations({
+       *      account: (commit, account) => {
+       *         commit("account", account)
+       *      },
+       *      password: (commit, password) => {
+       *         commit("password", password)
+       *       },
+       *   }),
+       * 
+       * 2、string的情况 或 重命名的情况
+       * ...mapMutations(['account', 'password'])
+       * ...mapMutations({account: 'account',password: 'password'})
+       */
       return typeof val === 'function'
         ? val.apply(this, [commit].concat(args))
         : commit.apply(this.$store, [val].concat(args))
@@ -76,6 +109,7 @@ export const mapGetters = normalizeNamespace((namespace, getters) => {
   }
   normalizeMap(getters).forEach(({ key, val }) => {
     // The namespace has been mutated by normalizeNamespace
+    // 根据namespace查找getter
     val = namespace + val
     res[key] = function mappedGetter () {
       if (namespace && !getModuleByNamespace(this.$store, 'mapGetters', namespace)) {
@@ -85,6 +119,11 @@ export const mapGetters = normalizeNamespace((namespace, getters) => {
         console.error(`[vuex] unknown getter: ${val}`)
         return
       }
+      /**
+       * ...mapGetters(['account', 'password'])
+       * 或
+       * ...mapGetters([account :'account', password:'password'])
+       */
       return this.$store.getters[val]
     }
     // mark vuex getter for devtools
@@ -107,14 +146,33 @@ export const mapActions = normalizeNamespace((namespace, actions) => {
   normalizeMap(actions).forEach(({ key, val }) => {
     res[key] = function mappedAction (...args) {
       // get dispatch function from store
+       // 先初始化root的dispatch
       let dispatch = this.$store.dispatch
+      // 有namespace，根据namespace查找对应的module
       if (namespace) {
         const module = getModuleByNamespace(this.$store, 'mapActions', namespace)
         if (!module) {
           return
         }
+        // 有namespace，根据namespace查找对应的module
         dispatch = module.context.dispatch
       }
+
+      /**
+       * 1、function的情况
+       * ...mapActions({
+       *      account: (dispatch, account) => {
+       *         dispatch("account", account)
+       *      },
+       *      password: (dispatch, password) => {
+       *         dispatch("password", password)
+       *       },
+       *   }),
+       * 
+       * 2、string的情况 或 重命名的情况
+       * ...mapActions(['account', 'password'])
+       * ...mapActions({account: 'account',password: 'password'})
+       */
       return typeof val === 'function'
         ? val.apply(this, [dispatch].concat(args))
         : dispatch.apply(this.$store, [val].concat(args))
